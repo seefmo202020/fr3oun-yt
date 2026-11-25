@@ -3,7 +3,6 @@ import express from 'express';
 import cookieSession from 'cookie-session';
 import multer from 'multer';
 import { google } from 'googleapis';
-import { GoogleGenAI, createUserContent, createPartFromUri } from '@google/genai';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,11 +12,11 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const {
   PORT = 3000, BASE_URL = `http://localhost:${PORT}`,
-  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GEMINI_API_KEY,
-  SESSION_SECRET, GEMINI_MODEL = 'gemini-2.5-flash', MAX_FILE_MB = 2048,
+  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  SESSION_SECRET, MAX_FILE_MB = 2048, DAILY_VIDEOS_PER_USER = 5,
 } = process.env;
 
-for (const [k, v] of Object.entries({ GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GEMINI_API_KEY, SESSION_SECRET })) {
+for (const [k, v] of Object.entries({ GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET })) {
   if (!v) { console.error(`Missing env: ${k} (شوف ملف .env.example)`); process.exit(1); }
 }
 
@@ -25,8 +24,8 @@ const REDIRECT_URI = `${BASE_URL}/auth/callback`;
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube.upload',
   'https://www.googleapis.com/auth/youtube.readonly',
+  'https://www.googleapis.com/auth/yt-analytics.readonly',
 ];
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 /* ---------- تخزين مشفّر للتوكنز ---------- */
 const DATA_DIR = path.join(__dirname, 'data');
@@ -130,85 +129,75 @@ const upload = multer({
     filename: (_r, f, cb) => cb(null, crypto.randomUUID() + path.extname(f.originalname || '.mp4')),
   }),
   limits: { fileSize: Number(MAX_FILE_MB) * 1024 * 1024 },
-  fileFilter: (_r, f, cb) => cb(f.mimetype.startsWith('video/') ? null : new Error('لازم يكون فيديو'), f.mimetype.startsWith('video/')),
+  fileFilter: (_r, f, cb) => {
+    const ok = f.fieldname === 'thumbnail'
+      ? /^image\/(jpeg|png|gif)$/.test(f.mimetype)
+      : f.mimetype.startsWith('video/');
+    cb(ok ? null : new Error(f.fieldname === 'thumbnail' ? 'الصورة لازم تكون JPG أو PNG' : 'لازم يكون فيديو'), ok);
+  },
 });
 
 const jobs = new Map();
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const CATEGORIES = '1 Film&Animation, 2 Autos, 10 Music, 15 Pets, 17 Sports, 19 Travel, 20 Gaming, 22 People&Blogs, 23 Comedy, 24 Entertainment, 25 News&Politics, 26 Howto&Style, 27 Education, 28 Science&Tech, 29 Nonprofits';
-
-function buildPrompt(hint, langHint) {
-  return `You are a YouTube SEO expert. Watch this video fully (audio + visuals) and produce metadata based ONLY on what is actually in it. Never be misleading or clickbait-lies.
-${langHint ? `Write everything in this language: ${langHint}.` : 'Write everything in the same language spoken in the video.'}
-${hint ? `Creator notes: ${hint}` : ''}
-
-Return JSON only with this exact shape:
-{
- "language": "BCP-47 code of the video's spoken language, e.g. ar or en",
- "title": "catchy, honest, max 70 characters, main keyword near the start",
- "description": "hook in the first 2 lines containing the main keyword, then a clear summary, then key points. Add chapters as '0:00 Title' lines only if the video structure is clear. No hashtags here.",
- "hashtags": ["3 to 5 relevant hashtags, each starting with #, no spaces"],
- "tags": ["15 to 25 tags: mostly long-tail search phrases of 2-4 words people really search, plus a few short ones"],
- "categoryId": "one id from: ${CATEGORIES}"
-}`;
-}
-
-function sanitize(m) {
-  const clean = (s) => String(s || '').replace(/[<>]/g, '').trim();
-  const title = clean(m.title).slice(0, 100) || 'Untitled';
-  const hashtags = (m.hashtags || []).map((h) => '#' + clean(h).replace(/^#+/, '').replace(/\s+/g, '')).filter((h) => h.length > 1).slice(0, 5);
-  let description = clean(m.description);
-  if (hashtags.length) description += `\n\n${hashtags.join(' ')}`;
-  description = Buffer.from(description).subarray(0, 4900).toString('utf8').replace(/\uFFFD$/, '');
+function parseTags(input) {
+  const raw = String(input || '').split(/[,،\n]/).map((t) => t.replace(/[<>#]/g, '').trim()).filter(Boolean);
   const tags = []; let total = 0;
-  for (const t of (m.tags || []).map(clean)) {
-    if (!t || t.length > 60) continue;
+  for (const t of raw) {
+    if (t.length > 60 || tags.includes(t)) continue;
     const cost = t.length + (t.includes(' ') ? 2 : 0) + 1;
     if (total + cost > 480) break;
-    if (!tags.includes(t)) { tags.push(t); total += cost; }
+    tags.push(t); total += cost;
   }
-  const categoryId = /^\d+$/.test(String(m.categoryId)) ? String(m.categoryId) : '22';
-  return { title, description, tags, hashtags, categoryId, language: clean(m.language) || undefined };
+  return tags;
+}
+const cleanText = (v) => String(v || '').replace(/[<>]/g, '').trim();
+
+/* حد يومي لكل مستخدم (حصة يوتيوب بتكفي حوالي 6 فيديوهات في اليوم) */
+const daily = new Map();
+function takeDailySlot(channelId) {
+  const key = `${channelId}:${new Date().toISOString().slice(0, 10)}`;
+  const n = daily.get(key) || 0;
+  if (n >= Number(DAILY_VIDEOS_PER_USER)) return false;
+  daily.set(key, n + 1);
+  return true;
 }
 
-async function analyzeWithGemini(filePath, mime, hint, langHint) {
-  let file = await ai.files.upload({ file: filePath, config: { mimeType: mime } });
-  try {
-    while (file.state === 'PROCESSING') { await sleep(3000); file = await ai.files.get({ name: file.name }); }
-    if (file.state === 'FAILED') throw new Error('Gemini فشل في معالجة الفيديو');
-    const r = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: createUserContent([createPartFromUri(file.uri, file.mimeType), buildPrompt(hint, langHint)]),
-      config: { responseMimeType: 'application/json' },
-    });
-    return JSON.parse(r.text.replace(/```json|```/g, '').trim());
-  } finally {
-    ai.files.delete({ name: file.name }).catch(() => {});
-  }
-}
-
-async function runJob(job, channelId, file, opts) {
+async function runJob(job, channelId, file, thumb, meta) {
   try {
     const auth = getClient(channelId);
     if (!auth) throw new Error('اربط القناة تاني');
-    job.step = 'analyzing';
-    const meta = sanitize(await analyzeWithGemini(file.path, file.mimetype || 'video/mp4', opts.hint, opts.lang));
-    job.meta = meta;
-    job.step = 'uploading';
+    const size = fs.statSync(file.path).size;
+    job.total = size; job.uploaded = 0; job.t0 = Date.now();
     const yt = google.youtube({ version: 'v3', auth });
     const r = await yt.videos.insert({
       part: ['snippet', 'status'],
       requestBody: {
         snippet: {
-          title: meta.title, description: meta.description, tags: meta.tags,
-          categoryId: meta.categoryId, defaultLanguage: meta.language, defaultAudioLanguage: meta.language,
+          title: meta.title, description: meta.description, tags: meta.tags, categoryId: meta.categoryId,
+          ...(meta.language ? { defaultLanguage: meta.language, defaultAudioLanguage: meta.language } : {}),
         },
-        status: { privacyStatus: opts.privacy, selfDeclaredMadeForKids: false },
+        status: { privacyStatus: meta.privacy, selfDeclaredMadeForKids: false },
       },
       media: { body: fs.createReadStream(file.path) },
+    }, {
+      onUploadProgress: (e) => { job.uploaded = e.bytesRead; job.progress = Math.min(99, Math.round((e.bytesRead / size) * 100)); },
     });
-    job.url = `https://www.youtube.com/watch?v=${r.data.id}`;
+    const videoId = r.data.id;
+    job.url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    if (thumb) {
+      job.step = 'thumbnail';
+      try {
+        await yt.thumbnails.set({
+          videoId,
+          media: { mimeType: thumb.mimetype, body: fs.createReadStream(thumb.path) },
+        });
+      } catch (e) {
+        console.error(e);
+        job.thumbError = 'الفيديو اترفع، بس الصورة المصغرة فشلت. لازم القناة تكون موثّقة برقم الموبايل عشان تضيف صورة مخصصة.';
+      }
+    }
+    job.progress = 100;
     job.step = 'done';
   } catch (e) {
     console.error(e);
@@ -216,6 +205,7 @@ async function runJob(job, channelId, file, opts) {
     job.error = e?.errors?.[0]?.message || e.message || 'حصل خطأ';
   } finally {
     fs.unlink(file.path, () => {});
+    if (thumb) fs.unlink(thumb.path, () => {});
     setTimeout(() => jobs.delete(job.id), 3600 * 1000);
   }
 }
@@ -223,22 +213,93 @@ async function runJob(job, channelId, file, opts) {
 app.post('/api/upload', (req, res) => {
   const channelId = req.session?.channelId;
   if (!channelId || !loadUsers()[channelId]) return res.status(401).json({ error: 'اربط قناتك الأول' });
-  upload.single('video')(req, res, (err) => {
+  upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }])(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: 'مفيش فيديو' });
-    const privacy = ['private', 'unlisted', 'public'].includes(req.body.privacy) ? req.body.privacy : 'private';
-    const job = { id: crypto.randomUUID(), channelId, step: 'queued' };
+    const file = req.files?.video?.[0];
+    const thumb = req.files?.thumbnail?.[0];
+    if (!file) return res.status(400).json({ error: 'مفيش فيديو' });
+    const drop = (code, error) => {
+      fs.unlink(file.path, () => {});
+      if (thumb) fs.unlink(thumb.path, () => {});
+      return res.status(code).json({ error });
+    };
+
+    const title = cleanText(req.body.title).slice(0, 100);
+    if (!title) return drop(400, 'اكتب عنوان للفيديو');
+    if (thumb && thumb.size > 2 * 1024 * 1024) return drop(400, 'الصورة لازم تكون أقل من 2MB');
+    if (!takeDailySlot(channelId)) return drop(429, `وصلت للحد اليومي (${DAILY_VIDEOS_PER_USER} فيديوهات). جرّب بكرة.`);
+
+    const description = Buffer.from(cleanText(req.body.description)).subarray(0, 4900).toString('utf8').replace(/\uFFFD$/, '');
+    const meta = {
+      title, description,
+      tags: parseTags(req.body.tags),
+      categoryId: /^\d+$/.test(req.body.category || '') ? req.body.category : '22',
+      language: cleanText(req.body.lang).slice(0, 20) || undefined,
+      privacy: ['private', 'unlisted', 'public'].includes(req.body.privacy) ? req.body.privacy : 'private',
+    };
+    const job = { id: crypto.randomUUID(), channelId, step: 'uploading', progress: 0 };
     jobs.set(job.id, job);
-    runJob(job, channelId, req.file, { privacy, hint: (req.body.hint || '').slice(0, 500), lang: (req.body.lang || '').slice(0, 20) });
+    runJob(job, channelId, file, thumb, meta);
     res.json({ jobId: job.id });
   });
+});
+
+app.get('/api/videos', async (req, res) => {
+  const channelId = req.session?.channelId;
+  const auth = channelId && getClient(channelId);
+  if (!auth) return res.status(401).json({ error: 'اربط قناتك الأول' });
+  try {
+    const yt = google.youtube({ version: 'v3', auth });
+    const ch = (await yt.channels.list({ part: ['contentDetails', 'statistics'], mine: true })).data.items?.[0];
+    const pl = await yt.playlistItems.list({
+      part: ['contentDetails'], playlistId: ch.contentDetails.relatedPlaylists.uploads,
+      maxResults: 24, pageToken: req.query.page || undefined,
+    });
+    const ids = pl.data.items.map((i) => i.contentDetails.videoId);
+    let videos = [];
+    if (ids.length) {
+      const v = await yt.videos.list({ part: ['snippet', 'contentDetails', 'statistics', 'status'], id: ids });
+      videos = v.data.items
+        .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+        .map((x) => ({
+          id: x.id, title: x.snippet.title, description: x.snippet.description, tags: x.snippet.tags || [],
+          publishedAt: x.snippet.publishedAt, categoryId: x.snippet.categoryId,
+          thumb: (x.snippet.thumbnails?.medium || x.snippet.thumbnails?.default || {}).url,
+          duration: x.contentDetails.duration, definition: x.contentDetails.definition,
+          dimension: x.contentDetails.dimension, caption: x.contentDetails.caption === 'true',
+          privacy: x.status.privacyStatus, uploadStatus: x.status.uploadStatus,
+          views: +x.statistics.viewCount || 0, likes: +x.statistics.likeCount || 0, comments: +x.statistics.commentCount || 0,
+        }));
+    }
+    let watch = {}, analytics = false;
+    if (ids.length) {
+      try {
+        const ya = google.youtubeAnalytics({ version: 'v2', auth });
+        const r = await ya.reports.query({
+          ids: 'channel==MINE', startDate: '2005-02-14', endDate: new Date().toISOString().slice(0, 10),
+          metrics: 'estimatedMinutesWatched,averageViewDuration', dimensions: 'video',
+          filters: `video==${ids.join(',')}`, sort: '-estimatedMinutesWatched', maxResults: 50,
+        });
+        (r.data.rows || []).forEach(([id, mins, avg]) => { watch[id] = { mins, avg }; });
+        analytics = true;
+      } catch (e) { console.error('analytics:', e.message); }
+    }
+    videos.forEach((v) => { v.watchMins = watch[v.id]?.mins ?? null; v.avgSecs = watch[v.id]?.avg ?? null; });
+    res.json({
+      channel: { subs: +ch.statistics.subscriberCount || 0, views: +ch.statistics.viewCount || 0, videos: +ch.statistics.videoCount || 0 },
+      videos, analytics, nextPage: pl.data.nextPageToken || null,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e?.errors?.[0]?.message || e.message });
+  }
 });
 
 app.get('/api/job/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job || job.channelId !== req.session?.channelId) return res.status(404).json({ error: 'غير موجود' });
-  const { id, channelId, ...pub } = job;
-  res.json(pub);
+  const { id, channelId, t0, ...pub } = job;
+  res.json({ ...pub, elapsed: t0 ? (Date.now() - t0) / 1000 : 0 });
 });
 
 const server = app.listen(PORT, () => console.log(`Running on ${BASE_URL}`));
