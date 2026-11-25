@@ -1,0 +1,13 @@
+PORT=3000
+# رابط موقعك (من غير / في الآخر)
+BASE_URL=https://Fr3ounyt2006.bonto.page/auth/callback
+
+# من Google Cloud Console (OAuth client - Web application)
+GOOGLE_CLIENT_ID=2455664716-m95rl47ejd7t9h1f42p0hncucd7lr5rs.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+
+# اكتب أي نص عشوائي طويل
+SESSION_SECRET=AIzaSyAhN3j1u-4ORIFCaREvHpX_m0tl9VdG-J4
+
+MAX_FILE_MB=2048
+DAILY_VIDEOS_PER_USER=5
