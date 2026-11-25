@@ -2,52 +2,19 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fr3oun AI — YouTube Studio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css">
+<title>Fr3oun AI | مدير قناتك</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="shell">
-  <aside class="sidebar">
-    <div class="brand"><div class="brand-mark">F</div><div><b>Fr3oun AI</b><small>YOUTUBE COMMAND CENTER</small></div></div>
-    <div class="nav-label">القائمة الرئيسية</div>
-    <a class="nav active" href="#"><span>▣</span> لوحة التحكم</a>
-    <a class="nav" href="#upload"><span>↑</span> رفع فيديو</a>
-    <a class="nav" href="#metadata"><span>✧</span> تجهيز بيانات الفيديو</a>
-    <div class="side-bottom"><div class="secure">🔒 بياناتك محفوظة محلياً على جهازك</div><small>FR3OUN AI · الإصدار 0.1</small></div>
-  </aside>
-  <main class="main">
-    <header><div><div class="eyebrow">مساحة العمل الشخصية</div><h1>أهلاً بيك في <span>Fr3oun AI</span></h1><p>جهّز فيديوهات قناتك وارفعها من مكان واحد.</p></div><div class="status" id="connection">جارٍ فحص الاتصال...</div></header>
-    <section class="hero">
-      <div><div class="pill">✦ مساعد يوتيوب الذكي</div><h2>من الفيديو إلى النشر<br><em>بخطوات أقل.</em></h2><p>ارفع الفيديو، جهّز بياناته، راجع كل شيء، ثم انشره على قناتك.</p><a class="primary" href="#upload">ابدأ بفيديو جديد <b>←</b></a></div>
-      <div class="hero-art"><div class="orbit o1"></div><div class="orbit o2"></div><div class="play">▶</div><div class="spark s1">✦</div><div class="spark s2">✧</div><div class="art-caption">CREATE · OPTIMIZE · PUBLISH</div></div>
-    </section>
-    <section class="grid">
-      <article class="panel" id="upload">
-        <div class="section-head"><div><div class="eyebrow">الخطوة 01</div><h3>ارفع الفيديو</h3></div><span class="step">01 / 03</span></div>
-        <label class="drop" for="video"><div class="upload-icon">↑</div><b>اختار ملف الفيديو من جهازك</b><span>MP4 أو MOV أو أي صيغة فيديو يدعمها يوتيوب</span><small id="fileName">لم يتم اختيار ملف بعد</small></label><input id="video" type="file" accept="video/*" hidden>
-      </article>
-      <article class="panel" id="metadata">
-        <div class="section-head"><div><div class="eyebrow">الخطوة 02</div><h3>بيانات الفيديو</h3></div><span class="step">02 / 03</span></div>
-        <div class="field"><label>عنوان الفيديو</label><input id="title" maxlength="100" placeholder="اكتب عنوان الفيديو"></div>
-        <div class="field"><label>الوصف</label><textarea id="description" rows="4" placeholder="اكتب وصف الفيديو هنا..."></textarea></div>
-        <div class="field"><label>الكلمات المفتاحية — افصل بينها بفاصلة</label><input id="tags" placeholder="مثال: علوم, حقائق, معلومات"></div>
-        <div class="row-fields"><div class="field"><label>التصنيف</label><select id="category"><option value="22">الأشخاص والمدونات</option><option value="27">التعليم</option><option value="28">العلوم والتكنولوجيا</option><option value="24">الترفيه</option><option value="20">الألعاب</option><option value="10">الموسيقى</option><option value="23">الكوميديا</option></select></div><div class="field"><label>الخصوصية</label><select id="privacy"><option value="private">خاص — Private</option><option value="unlisted">غير مدرج — Unlisted</option><option value="public">عام — Public</option></select></div></div>
-        <div class="field"><label class="check"><input id="kids" type="checkbox"> الفيديو مخصص للأطفال</label></div>
-      </article>
-      <article class="panel">
-        <div class="section-head"><div><div class="eyebrow">الخطوة 03</div><h3>الصورة المصغرة</h3></div><span class="step">03 / 03</span></div>
-        <label class="thumb-drop" for="thumb"><div class="thumb-preview" id="thumbPreview">▧</div><b>اختار صورة مصغرة</b><span>JPG أو PNG — تقدر تضيفها بعد رفع الفيديو</span></label><input id="thumb" type="file" accept="image/jpeg,image/png" hidden>
-        <button class="secondary full" id="thumbBtn" disabled>رفع الصورة بعد نشر الفيديو</button>
-      </article>
-    </section>
-    <section class="publish panel">
-      <div><div class="eyebrow">جاهز للانطلاق؟</div><h3>راجع بياناتك قبل النشر</h3><p>ننصحك تبدأ بوضع «خاص» لاختبار الفيديو قبل نشره للعامة.</p></div>
-      <button class="primary" id="publish">ارفع الفيديو على يوتيوب <b>↗</b></button>
-    </section>
-    <div class="notice" id="notice" role="status">اربط حساب يوتيوب أولاً لبدء الرفع.</div>
-    <footer>Fr3oun AI <span>·</span> أداة شخصية تعمل محلياً على جهازك</footer>
-  </main>
-</div>
-<script src="/app.js"></script>
-</body></html>
+<header class="top"><div class="brand"><span class="logo">F</span><div><b>Fr3oun AI</b><small>مدير فيديوهات يوتيوب الذكي</small></div></div><div id="connection" class="pill">جارٍ فحص الاتصال...</div></header>
+<main>
+<section class="hero"><div><span class="eyebrow">استوديو يوتيوب الذكي</span><h1>فيديوك جاهز للنشر؟<br><em>خلّي Fr3oun AI يجهّزهولك.</em></h1><p>ارفع الفيديو، ولّد العنوان والوصف والكلمات المفتاحية والصورة المصغرة، وبعدها انشر على قناتك.</p></div></section>
+<section class="panel channel"><div><div class="step">01 · ربط القناة</div><h2>قناتك على YouTube</h2><p id="channelText">اربط حساب Google المرتبط بقناتك للنشر مباشرة.</p></div><div class="actions"><a class="btn red" href="/auth/youtube" id="connectBtn">▶ ربط قناة يوتيوب</a><button class="btn ghost hidden" id="disconnectBtn">فصل القناة</button></div></section>
+<section class="panel"><div class="step">02 · الفيديو</div><h2>ارفع الفيديو</h2><label class="drop" for="video"><span class="uploadIcon">↑</span><b>اختار ملف الفيديو من جهازك</b><small>MP4 أو MOV — حجم أقصى 20GB حسب حدود الاستضافة</small><input id="video" type="file" accept="video/*"></label><div id="fileName" class="muted"></div>
+<div class="field"><label for="topic">موضوع الفيديو أو وصف سريع لمحتواه</label><textarea id="topic" rows="3" placeholder="مثال: تجربة بناء منزل صغير من الصفر في الصحراء..."></textarea></div>
+<div class="field"><label for="extra">ملاحظات اختيارية (الجمهور، اللهجة، كلمات مهمة)</label><input id="extra" placeholder="مثال: الجمهور المصري، أسلوب مشوق"></div>
+<button class="btn purple" id="generateBtn">✦ حلّل الفيديو وولّد بيانات SEO</button><p class="hint">اكتب وصفاً لمحتوى الفيديو بدقة؛ النسخة الحالية لا تستخرج الكلام من ملف الفيديو نفسه تلقائياً.</p></section>
+<section class="panel"><div class="step">03 · بيانات النشر</div><h2>العنوان والوصف والكلمات المفتاحية</h2><div class="field"><label>عنوان الفيديو</label><input id="title" maxlength="100" placeholder="العنوان المقترح سيظهر هنا"></div><div class="field"><label>وصف الفيديو</label><textarea id="description" rows="6" placeholder="الوصف المقترح سيظهر هنا"></textarea></div><div class="field"><label>Tags — افصل بينها بفاصلة</label><textarea id="tags" rows="2" placeholder="الكلمات المفتاحية ستظهر هنا"></textarea></div><div class="field"><label>هاشتاجات مقترحة</label><input id="hashtags" placeholder="#يوتيوب #..." /></div></section>
+<section class="panel"><div class="step">04 · الصورة المصغرة</div><h2>صمّم Thumbnail للفيديو</h2><div class="field"><label>وصف الصورة المطلوبة</label><input id="imagePrompt" placeholder="مثال: شخص مندهش أمام منزل يحترق، بدون كتابة"></div><div class="actions wrap"><button class="btn purple" id="makeImageBtn">✦ ولّد صورة بالـ AI</button><label class="btn ghost fileBtn" for="thumbnail">أو ارفع صورتك<input id="thumbnail" type="file" accept="image/png,image/jpeg,image/webp"></label></div><img id="preview" class="preview hidden" alt="معاينة الصورة المصغرة"><div id="imageStatus" class="muted"></div></section>
+<section class="panel"><div class="step">05 · النشر</div><h2>راجع إعدادات الفيديو وانشر</h2><div class="field"><label>خصوصية الفيديو</label><select id="privacy"><option value="private">خاص — Private</option><option value="unlisted">غير مدرج — Unlisted</option><option value="public">عام — Public</option></select></div><label class="check"><input id="kids" type="checkbox"> الفيديو مخصص للأطفال</label><button class="btn red full" id="publishBtn">↑ رفع الفيديو إلى قناتي على يوتيوب</button><p class="hint">راجع كل البيانات قبل النشر. اختيار "عام" ينشر الفيديو للجميع مباشرة.</p><div id="result"></div></section>
+<footer>Fr3oun AI · نسخة تجريبية 0.2 — أدوات الذكاء الاصطناعي تحتاج مفتاح API خاص بك.</footer>
+</main><script src="/app.js"></script></body></html>

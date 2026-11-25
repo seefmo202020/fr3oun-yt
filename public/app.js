@@ -1,10 +1,69 @@
 const $ = id => document.getElementById(id);
-let uploadedVideoId = null;
-let thumbnailFile = null;
-function notice(msg, error=false){const n=$("notice");n.textContent=msg;n.style.display="block";n.classList.add("show");n.style.borderColor=error?"#744040":"#34452a";n.style.color=error?"#ffaaaa":"#c8e89a";}
-async function refreshStatus(){try{const s=await fetch("/api/status").then(r=>r.json());$("connection").textContent=s.connected?"● قناة يوتيوب متصلة":"○ يوتيوب غير متصل";$("connection").style.color=s.connected?"#c9f66e":"#f0c477";if(!s.configured)notice("الخطوة التالية: إعداد Google OAuth في ملف .env ثم إعادة تشغيل الموقع.");else if(!s.connected)$("connection").innerHTML='<a href="/auth/youtube" style="color:#c9f66e">اربط قناة يوتيوب</a>';}catch{$("connection").textContent="الخادم غير متاح";}}
-$("video").addEventListener("change",e=>$("fileName").textContent=e.target.files[0]?.name||"لم يتم اختيار ملف بعد");
-$("thumb").addEventListener("change",e=>{thumbnailFile=e.target.files[0];if(thumbnailFile){const img=document.createElement("img");img.src=URL.createObjectURL(thumbnailFile);$("thumbPreview").replaceChildren(img);$("thumbBtn").disabled=!uploadedVideoId;}});
-$("thumbBtn").addEventListener("click",async()=>{if(!thumbnailFile||!uploadedVideoId)return;const fd=new FormData();fd.append("thumbnail",thumbnailFile);fd.append("videoId",uploadedVideoId);$("thumbBtn").disabled=true;try{const r=await fetch("/api/thumbnail",{method:"POST",body:fd});const d=await r.json();if(!r.ok)throw Error(d.error);notice("تم رفع الصورة المصغرة بنجاح.");}catch(e){notice(e.message,true);$("thumbBtn").disabled=false;}});
-$("publish").addEventListener("click",async()=>{const file=$("video").files[0];if(!file)return notice("اختار ملف الفيديو الأول.",true);if(!$("title").value.trim())return notice("اكتب عنوان الفيديو الأول.",true);const fd=new FormData();fd.append("video",file);fd.append("title",$("title").value);fd.append("description",$("description").value);fd.append("tags",$("tags").value);fd.append("categoryId",$("category").value);fd.append("privacy",$("privacy").value);fd.append("madeForKids",$("kids").checked);const btn=$("publish");btn.disabled=true;btn.textContent="جاري رفع الفيديو... لا تغلق الصفحة";notice("بدأ الرفع. قد يستغرق وقتاً حسب حجم الفيديو وسرعة الإنترنت.");try{const r=await fetch("/api/upload",{method:"POST",body:fd});const d=await r.json();if(!r.ok)throw Error(d.error);uploadedVideoId=d.videoId;$("thumbBtn").disabled=!thumbnailFile;notice("تم رفع الفيديو! افتحه من هنا: "+d.url);btn.textContent="تم الرفع بنجاح ✓";}catch(e){notice(e.message,true);btn.disabled=false;btn.textContent="ارفع الفيديو على يوتيوب ↗";}});
+let generatedImage = null;
+let uploadedThumb = null;
+async function api(url, options={}) {
+  const r = await fetch(url, options);
+  const data = await r.json().catch(()=>({error:"استجابة غير مفهومة من الخادم"}));
+  if (!r.ok) throw new Error(data.error || `خطأ ${r.status}`);
+  return data;
+}
+function busy(button, on, label) { button.disabled=on; if(on){button.dataset.old=button.textContent;button.textContent=label;} else button.textContent=button.dataset.old || button.textContent; }
+async function refreshStatus(){
+  try {
+    const s=await api("/api/status");
+    $("connection").textContent=s.connected?"القناة متصلة ✓":s.oauthConfigured?"القناة غير متصلة":"إعداد ربط يوتيوب ناقص";
+    $("connection").className="pill "+(s.connected?"good":"");
+    $("channelText").textContent=s.channel?`متصل بالقناة: ${s.channel.title}`:"اربط حساب Google المرتبط بقناتك للنشر مباشرة.";
+    $("connectBtn").classList.toggle("hidden",s.connected);
+    $("disconnectBtn").classList.toggle("hidden",!s.connected);
+    if(!s.aiConfigured) $("generateBtn").title="يلزم إضافة GEMINI_API_KEY في إعدادات الاستضافة.";
+  } catch(e){$("connection").textContent="تعذر فحص الاتصال";}
+}
+$("video").addEventListener("change",e=>$("fileName").textContent=e.target.files[0]?.name||"");
+$("generateBtn").onclick=async()=>{
+  const b=$("generateBtn"); busy(b,true,"جاري تجهيز العنوان والوصف...");
+  try{
+    const d=await api("/api/generate-metadata",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:$("topic").value,extra:$("extra").value})});
+    $("title").value=d.title||""; $("description").value=d.description||"";
+    $("tags").value=(d.tags||[]).join(", "); $("hashtags").value=(d.hashtags||[]).join(" ");
+  }catch(e){alert(e.message)}finally{busy(b,false)}
+};
+$("makeImageBtn").onclick=async()=>{
+  const b=$("makeImageBtn"); busy(b,true,"جاري توليد الصورة...");
+  try{
+    const d=await api("/api/generate-thumbnail",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:$("imagePrompt").value||$("topic").value})});
+    generatedImage=d.image; uploadedThumb=null; $("preview").src=d.image; $("preview").classList.remove("hidden"); $("imageStatus").textContent="الصورة جاهزة، وسيتم رفعها بعد نشر الفيديو.";
+  }catch(e){alert(e.message)}finally{busy(b,false)}
+};
+$("thumbnail").onchange=e=>{
+  uploadedThumb=e.target.files[0]||null; generatedImage=null;
+  if(uploadedThumb){$("preview").src=URL.createObjectURL(uploadedThumb);$("preview").classList.remove("hidden");$("imageStatus").textContent="تم اختيار صورتك وستُرفع بعد نشر الفيديو."}
+};
+$("disconnectBtn").onclick=async()=>{if(!confirm("هل تريد فصل القناة؟"))return;await api("/api/disconnect",{method:"POST"});refreshStatus()};
+$("publishBtn").onclick=async()=>{
+  const video=$("video").files[0];
+  if(!video)return alert("اختار ملف الفيديو أولاً.");
+  if(!$("title").value.trim())return alert("اكتب عنوان الفيديو أو ولّده أولاً.");
+  if(!confirm("تأكيد رفع الفيديو إلى القناة؟"))return;
+  const b=$("publishBtn");busy(b,true,"جاري رفع الفيديو إلى يوتيوب...");
+  $("result").textContent="قد يستغرق الرفع بعض الوقت حسب حجم الفيديو وسرعة الإنترنت. لا تغلق الصفحة.";
+  try{
+    const fd=new FormData();fd.append("video",video);fd.append("title",$("title").value);
+    fd.append("description",$("description").value);fd.append("tags",$("tags").value);
+    fd.append("privacy",$("privacy").value);fd.append("madeForKids",$("kids").checked?"true":"false");
+    const d=await api("/api/upload",{method:"POST",body:fd});
+    if(generatedImage||uploadedThumb){
+      const tf=new FormData();tf.append("videoId",d.videoId);
+      if(uploadedThumb)tf.append("thumbnail",uploadedThumb);
+      else {
+        const blob=await (await fetch(generatedImage)).blob();
+        tf.append("thumbnail",new File([blob],"thumbnail.png",{type:blob.type||"image/png"}));
+      }
+      try{await api("/api/thumbnail",{method:"POST",body:tf});}
+      catch(e){$("result").innerHTML=`<p class="warn">تم رفع الفيديو، لكن تعذر تعيين الصورة المصغرة: ${e.message}</p><a target="_blank" href="${d.url}">فتح الفيديو على يوتيوب</a>`;return;}
+    }
+    $("result").innerHTML=`<p class="success">تم رفع الفيديو بنجاح!</p><a target="_blank" rel="noopener" href="${d.url}">مشاهدة الفيديو على YouTube</a>`;
+  }catch(e){$("result").textContent="تعذر النشر: "+e.message}
+  finally{busy(b,false)}
+};
 refreshStatus();
